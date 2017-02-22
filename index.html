@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Title</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# Mull meets Rust
+
+### Implementing mutation testing system for
+### Rust programming language
+
+---
+
+## Good news #1: Rust is LLVM friendly
+
+- Stable Rust is working against LLVM 3.9, people are working on
+LLVM 4.0 support. For contrast: Haskell is LLVM 3.7.
+- Tried to read it with LLVM 4.0 API but failed, had to rollback to 3.9.
+
+---
+
+## Good news #2: Rust is LLVM bitcode friendly
+
+- No CMake, no Ninja and compilation databases, no Bash magic
+- `cargo test --verbose` to learn compilation commands
+- Just works:
+
+```
+compile: clean
+    mkdir -p /Users/stanislaw/Projects/nom/target/debug/deps
+    touch /Users/stanislaw/Projects/nom/target/debug/deps/nom-2045d976cde84170.d
+    rustc -Z print-link-args \
+          --crate-name nom src/lib.rs \
+          --emit=dep-info,link,llvm-ir,llvm-bc \
+          -C debuginfo=2 \
+          --test \
+          --cfg 'feature="default"' \
+          --cfg 'feature="stream"' \
+          -C metadata=2045d976cde84170 \
+          -C extra-filename=-2045d976cde84170 \
+          --out-dir /Users/stanislaw/Projects/nom/target/debug/deps \
+          -L dependency=/Users/stanislaw/Projects/nom/target/debug/deps
+```
+
+---
+
+## Finding tests
+
+"How do I find the function pointers for tests from the LLVM IR code of a Rust program?"
+
+http://stackoverflow.com/questions/42177712/how-do-i-find-the-function-pointers-for-tests-from-the-llvm-ir-code-of-a-rust-pr
+
+Should we use a brute-force search or is there anything better?
+
+> "I am not sure how you'll manage to do it, but I certainly wish you luck.
+Having mutation testing in Rust would be awesome."
+
+---
+
+## Finding tests
+
+https://users.rust-lang.org/t/how-do-i-find-the-function-pointers-for-tests-from-the-llvm-ir-code-of-a-rust-program/9407
+
+@nagisa:
+
+> Why not just collect anything that looks like a function pointer to LLVM by exhaustively searching the whole structure passed into the function called test_main_static?
+
+> In general I can not think of any approach that could work if the test suite is compiled with optimisations LLVM can and will inline even indirect calls just fine if the body of test_main_static ever gets its IR put into the same module as main.
+
+---
+
+## Finding tests: LLVM IR for Rust module with tests
+
+```
+tests = [
+  {
+    name: "Test1",
+    pointer: &Test1
+  },
+  {
+    name: "Test2",
+    pointer: &Test2
+  },
+  ...
+]
+
+void test_main() {
+  // https://doc.rust-lang.org/1.1.0/test/fn.test_main_static.html
+  test_main_static(&tests);
+}
+
+void main(int argc, int argv) {
+  std::rt::lang_start(&test_main, &argc, &argv);
+}
+```
+
+---
+
+## Finding tests: filtering noise
+
+/Users/rustbuild/src/rust-buildbot/slave/stable-dist-rustc-mac/build/obj/../src/libcore/fmt/mod.rs
+
+_ZN4core9panicking5panic17hd383cb12a44b01ffE
+
+```
+class RustTestMutationOperatorFilter : public MutationOperatorFilter {
+public:
+  bool shouldSkipInstruction(llvm::Instruction *instruction) {
+    if (CallInst *callInst = dyn_cast<CallInst>(instruction)) {
+      if (Function *calledFunction = callInst->getCalledFunction()) {
+        if (calledFunction->getName().find("panic") != std::string::npos) {
+          return true;
+        }
+      }
+    }
+
+    if (instruction->hasMetadata()) {
+      int debugInfoKindID = 0;
+      MDNode *debug = instruction->getMetadata(debugInfoKindID);
+
+      DILocation *location = dyn_cast<DILocation>(debug);
+      if (location) {
+        if (location->getFilename().str().find("buildbot") != std::string::npos) {
+          return true;
+        }
+      }
+    } else {
+      return true;
+    }
+
+    return false;
+  };
+};
+```
+
+---
+
+## Running tests
+
+https://github.com/rust-lang/rust/blob/master/src/libstd/rt.rs#L32
+
+```
+void test_main() {
+  // https://doc.rust-lang.org/1.1.0/test/fn.test_main_static.html
+  test_main_static(&tests);
+}
+
+// Does not exist in original module. Added on the fly via LLVM API.
+void dummy() {
+  printf(":Trollface:\n");
+}
+
+void main(int argc, int argv) {
+  std::rt::lang_start(&dummy, &argc, &argv);
+}
+```
+
+---
+
+## Add Mutation Operator
+
++ is wrapped into safe-add-with-overflow
+
+---
+
+## TODO: Compilation pipeline
+
+Goal: for any given Rust project get its LLVM IR easily (both code and tests).
+
+- So far we are only testing unit tests that are embedded in src/* files.
+- rustc produces only one .bc file - re-compilation is slow
+- having a program and its tests in one module is convenient, but it would
+  be great to decompose it into the smaller chunks.
+
+---
+
+## Links
+
+- Mull project: https://github.com/mull-project/mull
+
+
+
+    </textarea>
+    <script src="https://gnab.github.io/remark/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
+
