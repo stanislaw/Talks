@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Mull: short overview</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif'; line-height: 1.6;}
+      pre { line-height: 1; }
+
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+        line-height: 1;
+      }
+
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+
+      .image img { width: 720px; }
+      .image .less img { width: 600px; }
+
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# Mull: short overview
+
+---
+
+## Who is Stanislav?
+
+- iOS developer by day, 7 years of experience in software development
+- 1.5 years of programming for LLVM in a spare time
+- Interests: developer tools, software verification, LLVM
+- http://stanislaw.github.io/
+- https://systemundertest.org/
+- https://github.com/mull-project/mull
+
+---
+
+## What is Mull?
+
+- Mutation testing system based on top of LLVM
+
+- Potentially can work with any programming language that compiles to LLVM IR
+
+- Already implemented:
+  - C/C++
+  - Rust (on hold, we know it works)
+
+- Pending:
+  - Objective-C
+  - Swift
+
+---
+
+## Mutation Testing: raw algorithm
+
+```c
+run_test(program, test);
+mutant = mutate(program);
+result = run_test(mutant, test)
+if (result == Failed) {
+  report_killed_mutant(mutant, test);
+} else {
+  report_survived_mutant(mutant, test);
+}
+```
+
+<span style="color: green; font-weight: bold;">Killed mutant</span> means our
+test is good: it is able to detect a change in a code.
+
+<span style="color: red; font-weight: bold; ">Survived mutant</span> means our
+test is not able to detect a change in a code: we either need to improve
+existing test or write more tests to kill survived mutants.
+
+`assert(sum(10, 5) > 0)` is the example of a shallow test: mutation `+ -> -`
+will survive. To kill the mutants we just need to make it
+`assert(sum(10, 5) == 15);`
+
+---
+
+class: center, middle
+
+## Demo: sqrt function from newlib/libm library
+
+---
+
+
+.center.image[![Image](libm-sqrt-mutations/libm-sqrt-mutations-01-intro.png)]
+
+
+
+---
+
+.center.image[![Image](libm-sqrt-mutations/libm-sqrt-mutations-02-report.png)]
+
+---
+
+.center.image[![Image](libm-sqrt-mutations/libm-sqrt-mutations-03-120-141-all.png)]
+
+---
+
+.center.image[![Image](libm-sqrt-mutations/libm-sqrt-mutations-04-120-141-survived.png)]
+
+---
+
+.center.image[![Image](libm-sqrt-mutations/libm-sqrt-mutations-05-124-survived.png)]
+
+---
+
+.center.image[![Image](libm-sqrt-mutations/libm-sqrt-mutations-06-124-survived-in-report.png)]
+
+---
+
+## How to make Mull support a programming language?
+
+- Language must be LLVM-friendly
+  - Should support compilation to LLVM IR: `*.bc` and `*.ll`
+
+- Find tests
+  - Each programming language has its own implementation details.
+  - Algorithm depends on a test framework used: Google Test, XCTest,
+  Rust's native test framework etc.
+
+- Find testees (code that is tested), find mutation points in them
+
+- Make tests run with LLVM JIT
+
+---
+
+## How to run Mull on a project
+
+- Step 1: Building Mull
+- Step 2: Getting LLVM bitcode
+- Step 3: Creating config.yml file
+- Step 4: Running Mull
+- Step 5: Generating HTML report
+
+---
+
+## Mutation Testing Coverage and Code Coverage
+
+- Statement coverage < mutation testing coverage
+- Branch coverage <= mutation testing coverage
+  - Negate condition mutation operator: `true <-> false`
+- Condition coverage <= mutation testing coverage
+  - Negate condition mutation operator: `true <-> false`
+  - AND-OR mutation operator: `&& <-> ||`
+- MC/DC coverage > mutation testing coverage
+  - Tried NASA tutorial: Mull gives 100% coverage on examples that do not
+satisfy MC/DC.
+- Mutation testing is not the best coverage but it is much better than
+statement coverage. We see it as a good replacement for statement coverage to
+raise the standards of testing.
+
+---
+
+## Mutation Testing and Symbolic Execution
+
+- Symbolic execution is an extremely friendly technique
+- KLEE is a tool for symbolic execution, also LLVM-based
+- KLEE can generate tests automatically
+- "Mull and Klee, part 1: mutation testing analysis for Klee's Tutorial Two"
+  - Compared Mull and KLEE on a simple C function. KLEE generated tests with
+  maximum of 87% mutation coverage.
+  - Test-generation very much depends on a solver KLEE uses.
+  - Needs a human to analyze the results.
+  - KLEE cannot generate tests easily readable by human (we reported this:
+  https://github.com/klee/klee/issues/648)
+
+---
+
+class: center, middle
+
+.center.image[![Image](overshift/overshift_mull.png)]
+
+---
+
+class: center, middle
+
+.center.image[![Image](overshift/overshift_klee.png)]
+
+---
+
+## Mull 2016-2017: brief history
+
+- Proof of concept: running `a + b` then `a - b` using LLVM JIT
+- Running tests in a fork'ed process
+- Reverse engineering Google Test to run it with LLVM JIT
+- C++ support
+- Implementation of math: add, sub, mul, div, scalar value, replace call,
+remove void call, negate condition, AND-OR
+- HTML reporting
+- Initial Rust support
+- Getting to work on Linux Ubuntu and CentOS
+- From static test finder to dynamic test finder: find mutations in function
+pointers and polymorphic classes
+- IDE diagnostics
+- Analysis of LLVM ADT and Support, fmt, OpenSSL, newlibm/libm libraries
+
+---
+
+class: center, middle
+
+## Pitest: examples
+
+---
+
+class: center, middle
+
+.image[![Image](pitest/pitest-0.png)]
+
+http://pitest.org
+
+---
+
+class: center, middle
+
+.image[.less[![Image](pitest/pitest-1.png)]]
+
+https://www.triology.de/en/blog-entries/mutation-testing
+
+---
+
+class: center, middle
+
+.image[.less[![Image](pitest/pitest-2.png)]]
+
+https://automationrhapsody.com/mutation-testing-java-pitest/
+
+---
+
+class: center, middle
+
+.image[![Image](pitest/pitest-3.png)]
+
+https://www.bountysource.com/teams/pitest/issues?tracker_ids=832315
+
+---
+
+## Further work
+
+### High-level goals
+
+- Make Mull a general purpose tool for mutation testing.
+
+### Implementation
+
+- Much better visual reporting.
+- Integration to IDEs.
+- Support of Swift / Objective-C
+- 1-click integration of Mull into C++/CMake-based projects.
+
+### Research
+
+- Auto-generation of tests
+  - KLEE and libFuzzer can help
+
+---
+
+<!-- ## Perception by community
+
+- People vaguely understand what mutation testing is and how they can benefits
+from it. We see that the same happens to testing, TDD, normal code coverage so
+that's fine.
+- People expect something easy-to-use.
+
+ -->
+
+## Open questions
+
+These are the questions we want to answer with Mull eventually.
+
+- Can mutation testing actually detect serious errors in the real-world programs?
+- What are the most effective mutation operators?
+- Compare mutation testing with other methods like static analysis, fuzz
+testing, etc.
+- Can mutation testing help to find errors that a normal testing with a code
+coverage cannot find?
+- Can mutation testing help in automatic test generation?
+
+---
+
+class: center, middle
+
+# Questions?
+
+    </textarea>
+    <script src="https://gnab.github.io/remark/downloads/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
+
